@@ -1,0 +1,204 @@
+---
+title: "Geographic Disparities in Access to Telemedicine Services in the Post-COVID-19 Era"
+author: "Shirisha Biyyala"
+date: " `r Sys.Date()` "
+output: github_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+## 1. Libraries
+
+```{r load-libraries}
+library(readr)
+library(tidyverse)
+library(knitr)
+library(htmltools)
+library(janitor)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(treemapify) 
+```
+
+All the required libraries are loaded for subsequent operations.
+
+## 2. Datasets
+
+```{r load-datasets}
+# Load datasets
+enrollment <- read_csv("../data/PPEF_Enrollment_Extract_2024.10.07.csv", show_col_types = FALSE)
+location <- read_csv("../data/PPEF_Practice_Location_Extract_2024.10.07.csv", show_col_types = FALSE)
+reassignment <- read_csv("../data/PPEF_Reassignment_Extract_2024.10.07.csv", show_col_types = FALSE)
+secondary <- read_csv("../data/PPEF_Secondary_Specialty_Extract_2024.10.07.csv", show_col_types = FALSE)
+
+head(enrollment)
+head(location)
+head(reassignment)
+head(secondary)
+```
+These datasets are now loaded into R from the `data` folder in the repository. We can use them for exploration and further analysis.
+
+```{r glimpse-data}
+glimpse(enrollment)
+glimpse(location)
+glimpse(reassignment)
+glimpse(secondary)
+```
+## 3. Data Cleaning
+
+```{r col-names-cleaning}
+# Clean column names
+enrollment <- enrollment %>% clean_names()
+location <- location %>% clean_names()
+reassignment <- reassignment %>% clean_names()
+secondary <- secondary %>% clean_names()
+```
+
+The column names of the `enrollment`, `location`, `reassignment`, and `secondary` datasets were standardized using `clean_names()` to ensure consistent formatting.
+
+
+```{r duplicate-missing-data}
+# Remove duplicates and missing values
+enrollment <- enrollment %>% distinct() %>%  select(-org_name) %>%  drop_na()
+# org_name has NA values
+location <- location %>% distinct() %>% drop_na()
+reassignment <- reassignment %>% distinct() %>% drop_na()
+secondary <- secondary %>% distinct() %>% drop_na()
+```
+
+#### Enrollment Dataset:
+- Duplicate rows were removed.
+- The `org_name` column was dropped as it contained missing values and was deemed unnecessary for the analysis.
+- Remaining rows with missing values were removed using `drop_na()`.
+
+#### Location, Reassignment, and Secondary Datasets:
+- Duplicates were removed.
+- Rows with missing values were dropped.
+
+```{r colnames-after-cleaning}
+colnames(enrollment)
+colnames(location)
+colnames(reassignment)
+colnames(secondary)
+```
+
+```{r data-type-conversion}
+
+# Enrollment dataset
+enrollment <- enrollment %>%
+  mutate(
+    npi = as.character(npi),  # Convert NPI to character
+    provider_type_cd = as.factor(provider_type_cd),  # Convert to factor
+    provider_type_desc = as.factor(provider_type_desc),  # Convert to factor
+    state_cd = as.factor(state_cd),  # Convert to factor
+    gndr_sw = factor(gndr_sw, levels = c("F", "M", "9"), labels = c("Female", "Male", "Unknown"))  # Gender
+  )
+
+# Location dataset
+location <- location %>%
+  mutate(
+    state_cd = as.factor(state_cd),  # Convert to factor
+    zip_code = str_sub(zip_cd, 1, 5)  # Extract first 5 digits of ZIP
+  )
+
+# Reassignment dataset
+reassignment <- reassignment %>%
+  rename(enrlmt_id = reasgn_bnft_enrlmt_id)  # Rename column for consistency
+
+# Secondary dataset
+secondary <- secondary %>%
+  mutate(
+    provider_type_cd = as.factor(provider_type_cd),  # Convert to factor
+    provider_type_desc = as.factor(provider_type_desc)  # Convert to factor
+  )
+```
+
+#### Enrollment Dataset:
+- `npi` was converted to a character type for consistency as it contains numerical IDs that should not be treated mathematically.
+- `provider_type_cd` and `provider_type_desc` were converted to factors to represent categorical data.
+- `state_cd` was converted to a factor for consistency in state representations.
+- `gndr_sw` was recoded as a factor with labeled levels ("Female", "Male", "Unknown").
+
+#### Location Dataset:
+- `state_cd` was converted to a factor for consistency.
+- `zip_code` was extracted as the first five digits of the `zip_cd` column to standardize the format.
+
+#### Reassignment Dataset:
+- The column `reasgn_bnft_enrlmt_id` was renamed to `enrlmt_id` for consistency across datasets.
+
+#### Secondary Dataset:
+- `provider_type_cd` and `provider_type_desc` were converted to factors.
+
+
+## 4. Data Preprocessing
+
+```{r summary}
+summary(enrollment)
+summary(location)
+summary(reassignment)
+summary(secondary)
+```
+
+
+```{r merge-data}
+# Merge enrollment data with practice location data
+merged_data <- merge(enrollment, location, by = "enrlmt_id")
+
+# Merge with reassignment data
+merged_data <- merge(merged_data, reassignment, by = "enrlmt_id")
+
+# Merge with secondary specialty data
+merged_data <- merge(merged_data, secondary, by = "enrlmt_id")
+
+head(merged_data)
+glimpse(merged_data)
+summary(merged_data)
+```
+
+#### Enrollment and Location:
+- Merged on the common key `enrlmt_id`.
+
+#### Adding Reassignment Data:
+- Merged the resulting dataset with the reassignment data using `enrlmt_id`.
+
+#### Adding Secondary Specialty Data:
+- Finally, merged the previous dataset with the secondary dataset using `enrlmt_id`.
+
+```{r save-file}
+# Save the final merged data as a CSV file
+write.csv(merged_data, "../data/Medicare_Public_Provider_Enrollment_Data.csv", row.names = FALSE)
+```
+
+```{r data-to-consider}
+# Select the relevant columns and rename them
+df <- merged_data %>%
+  select(
+    enrlmt_id, npi, pecos_asct_cntl_id, provider_type_desc.x, state_cd.x, first_name, mdl_name, last_name, gndr_sw, city_name, zip_code, rcv_bnft_enrlmt_id, provider_type_desc.y, state_cd.y
+  ) %>%
+  rename(
+    provider_type_desc.before = provider_type_desc.x,
+    provider_type_desc.after = provider_type_desc.y,
+    state_cd.before = state_cd.x,
+    state_cd.after = state_cd.y
+  )
+
+# Check the first few rows of the new 'data'
+head(df)
+glimpse(df)
+
+# Save the final  data as a CSV file
+write.csv(df, "../data/Medicare_Provider_Data.csv", row.names = FALSE)
+```
+
+## Summary of Resulting Dataset
+The merged dataset contains 14 columns with cleaned and transformed data. Key columns include:
+
+- `provider_type_cd.before`, `provider_type_desc.before`, and `state_cd.before` (from the enrollment data).
+- `city_name`, `zip_code`, and `state_cd.after` (from the location data).
+- `rcv_bnft_enrlmt_id` (from the reassignment data).
+- `provider_type_cd.after` and `provider_type_desc.after` (from the secondary data).
+
+Rows with inconsistent or missing data were removed to ensure high-quality and complete information.

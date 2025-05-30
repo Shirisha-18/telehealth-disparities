@@ -1,0 +1,134 @@
+---
+title: "Geographic Disparities in Access to Telemedicine Services in the Post-COVID-19 Era"
+author: "Shirisha Biyyala"
+date: " `r Sys.Date()` "
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+## Summary
+
+The COVID-19 pandemic accelerated the adoption of telemedicine, aiming to enhance healthcare accessibility. However, disparities in telemedicine access persist, influenced by factors such as geography, socioeconomic status, and digital literacy. This report examines these disparities, focusing on the post-pandemic era, and discusses their implications for healthcare access and policy.
+
+
+## Presentation
+
+My presentation can be found [here](presentation/presentation.html).
+
+## Data 
+
+The analysis utilizes data from the Centers for Medicare & Medicaid Services (CMS) and PECOS, focusing on telemedicine usage patterns across different states and demographics. Data was retrieved for the period of January to March 2024 on December 18, 2024.
+
+- **Source**: Provider Enrollment, Chain, and Ownership System (PECOS).
+- **Link**: [Medicare Fee-For-Service Public Provider Enrollment Data](https://www.nber.org/research/data/medicare-fee-service-public-provider-enrollment-data)
+
+## Findings
+
+```{r load-libraries}
+library(readr)
+library(tidyverse)
+library(rvest)
+library(dplyr)      
+library(tidyr)      
+library(rvest)       
+library(sf)   
+library(tigris)     
+library(leaflet)     
+```
+
+
+```{r population-scraping-2024}
+# Load the Medicare provider dataset
+df = read.csv("data/Medicare_Provider_Data.csv", colClasses = c(zip_code = "character"))
+
+# Step 1: Scrape state names and populations from the webpage
+url <- "https://worldpopulationreview.com/states"
+
+# Read the HTML content of the webpage
+webpage <- read_html(url)
+
+# Extract the state names and populations
+states <- webpage %>%
+  html_nodes(".lg\\:px-8 .relative .my-6 .text-wpr-link") %>%
+  html_text()
+
+populations <- webpage %>%
+  html_nodes(".lg\\:px-8 .relative .my-6 .text-wpr-table_text:nth-child(3)") %>%  
+  html_text()
+
+# Clean the population data (remove commas and convert to numeric)
+populations <- gsub(",", "", populations)  # Remove commas
+populations <- as.numeric(populations)     # Convert to numeric
+
+# Handle any missing values or non-numeric data
+populations[is.na(populations)] <- 0  # Replace NAs with 0, or another default value
+
+# Create a data frame of states and populations
+state_population_data <- data.frame(state = states, population = populations)
+
+```
+
+```{r merge-datasets, include = FALSE}
+# Step 2: State-wise distribution of providers 
+state_distribution <- df %>%
+  group_by(state_cd.before) %>%
+  summarise(provider_count = n()) %>%
+  arrange(desc(provider_count))
+
+# Step 3: Load US states shapefile using 'tigris'
+us_states <- st_as_sf(states())
+
+# Step 4: Transform the projection to WGS84 (Leaflet standard)
+us_states <- st_transform(us_states, crs = 4326)
+
+# Step 5: Merge state shapefile with the provider distribution data
+state_map_data <- us_states %>%
+  left_join(state_distribution, by = c("STUSPS" = "state_cd.before"))
+
+# Make sure the projection is in WGS84 (EPSG:4326) for Leaflet
+state_map_data <- st_transform(state_map_data, crs = 4326)
+
+```
+
+```{r provider-per-capita-map}
+# Create the Leaflet map
+leaflet(data = state_map_data) %>%
+  addTiles() %>%  # Adds default OpenStreetMap tiles
+  addPolygons(fillColor = ~colorQuantile("YlOrRd", provider_count)(provider_count), # Color by provider count
+              weight = 2, 
+              opacity = 1, 
+              color = "white", 
+              dashArray = "1", 
+              fillOpacity = 0.7,
+              label = ~paste(NAME, ": ", provider_count, " providers")) %>%
+  addLegend(pal = colorQuantile("YlOrRd", NULL, n = 5), 
+            values = state_map_data$provider_count, 
+            title = "Provider Count", 
+            position = "bottomright")
+
+```
+
+
+#### Geographic Disparities
+
+Telemedicine adoption varies significantly across the United States. Urban areas, particularly in states like California, Illinois, and Ohio, exhibit higher telemedicine usage rates compared to rural regions. This urban-rural divide is attributed to factors such as internet infrastructure, healthcare facility density, and socioeconomic status. ([Link Here](https://pmc.ncbi.nlm.nih.gov/articles/PMC9053673/))
+
+#### Socioeconomic Factors
+
+Socioeconomic status plays a crucial role in telemedicine access. Individuals from lower-income backgrounds often face challenges like limited internet access and digital literacy, hindering their ability to utilize telehealth services effectively. ([Link Here](https://bmchealthservres.biomedcentral.com/articles/10.1186/s12913-024-10797-4))
+
+#### Policy Implications
+
+Addressing these disparities requires targeted policy interventions, including:
+
+- **Infrastructure Development**: Investing in broadband expansion to ensure reliable internet access in underserved areas.
+- **Digital Literacy Programs**: Implementing educational initiatives to enhance digital skills among populations with limited technological proficiency.
+- **Regulatory Reforms**: Adjusting policies to support telemedicine reimbursement and licensure across state lines, facilitating broader access.
+
+
+## References
+
+- Centers for Medicare & Medicaid Services. (2024). *Telemedicine Usage Patterns*. Retrieved January to March 2024, on December 18, 2024, from [https://www.cms.gov/medicare/coverage/telehealth](https://www.cms.gov/medicare/coverage/telehealth)
+- World Population Review. (2024). *States*. [https://worldpopulationreview.com/states](https://worldpopulationreview.com/states).

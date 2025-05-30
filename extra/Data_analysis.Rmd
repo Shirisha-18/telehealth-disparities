@@ -1,0 +1,366 @@
+---
+title: "Geographic Disparities in Access to Telemedicine Services in the Post-COVID-19 Era"
+author: "Shirisha Biyyala"
+date: " `r Sys.Date()` "
+output: html_document
+---
+
+<!-- ## Preliminary tasks -->
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r load-libraries}
+library(readr)
+library(tidyverse)
+library(knitr)
+library(htmltools)
+library(janitor)
+library(dplyr)
+library(stringr)
+library(openxlsx)
+library(ggplot2)
+library(treemapify)
+library(sf)
+library(tigris)
+library(leaflet)
+library(DT)
+library(networkD3)
+library(rmarkdown)
+library(gridExtra)
+```
+
+
+```{r load-dataset}
+df = read.csv("../data/Medicare_Provider_Data.csv", colClasses = c(zip_code = "character"))
+glimpse(df)
+```
+
+## 5. Exploratory Data Analysis
+
+### 5.1 Provider distribution analysis
+
+Analyze how telemedicine-capable providers are distributed across geographic regions on sample data.
+
+```{r provider-distribution}
+# Count the number of providers by state
+provider_by_state <- df %>%
+  group_by(state_cd.before) %>%
+  summarise(provider_count = n())
+
+# Count the number of providers by ZIP code
+provider_by_zip <- df %>%
+  group_by(zip_code) %>%
+  summarise(provider_count = n())
+
+# View the distribution
+print(provider_by_state)
+print(provider_by_zip)
+```
+
+The provided data offers an overview of the number of providers (`provider_count`) in each state or region (`state_cd.before`). Here's a breakdown of some key observations and interpretations:
+
+#### 1. Wide Variation in Provider Distribution
+- **California (CA)** stands out with **2,806** providers, making it by far the state with the highest provider count.
+- States like **Alaska (AK)** with **7** providers, **Delaware (DE)** with **5**, and **New Hampshire (NH)** with **5** have very few providers, which might indicate a smaller healthcare infrastructure or a limited number of provider types.
+
+#### 2. States with Moderate to High Provider Count
+- States like **Florida (FL)** with **524**, **Illinois (IL)** with **512**, and **New Jersey (NJ)** with **371** have a higher provider count, reflecting larger populations or possibly a more developed healthcare system.
+
+#### 3. Potential Regional Trends
+- Larger, more populous states like **California, Florida, and Illinois** naturally have more providers, likely due to greater demand for healthcare services.
+- On the other hand, less populous states like **Montana (MT)** and **Nebraska (NE)** show lower numbers, which might correlate with their smaller populations or fewer healthcare facilities.
+
+
+```{r state-provider-distribution, fig.width=10, fig.height=6}
+# State-wise distribution of providers
+state_distribution <- df %>%
+  group_by(state_cd.before) %>%
+  summarise(provider_count = n()) %>%
+  arrange(desc(provider_count))
+
+# Define the categories for coloring
+state_distribution$category <- ifelse(state_distribution$state_cd.before %in% c("GU", "PR", "VI",  "HI"), "Special Notes",                                                                   ifelse(state_distribution$state_cd.before %in% c("AK", "AL", "AR", "AZ", "CA", "CO", "CT", "DE", "FL", "GA", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY"), "State", 
+                               "U.S. Territories"))
+
+# Map colors to categories
+state_distribution$color <- ifelse(state_distribution$category == "State", "lightblue", 
+                            ifelse(state_distribution$category == "U.S. Territories", "rosybrown", "lightcoral"))
+
+# Plot the distribution of providers by state with colors on x-axis
+ggplot(state_distribution, aes(x = reorder(state_cd.before, -provider_count), y = provider_count, fill = color)) +
+  geom_bar(stat = "identity") +
+  scale_fill_identity() +
+  labs(
+    title = "Provider Distribution by State",
+    x = "U.S. States and Territories",
+    y = "Number of Providers",
+    fill = "Category"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),  
+    axis.text.y = element_text(size = 12),  
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.margin = margin(1, 1, 1, 1, "cm"),
+    )
+```
+
+#### 4. Small Providers in Territories or Less Populated Regions
+- **Guam (GU)** and **Hawaii (HI)** have relatively small provider counts of **2** and **32**, respectively, which could be attributed to their geographical size or relatively smaller populations.
+
+#### 5. Focus on States with Low Provider Count
+- States like **Montana (MT)**, **Minnesota (MN)**, and **Maine (ME)**, with **9** to **34** providers, might suggest that healthcare resources are more limited in these regions. This could impact the availability of healthcare services for residents, which may require further investigation or intervention.
+
+```{r zip-to-city}
+# Create the zip_distribution dataset
+zip_distribution <- df %>%
+  group_by(zip_code) %>%
+  summarise(provider_count = n()) %>%
+  arrange(desc(provider_count))
+# Load the geo-data
+geo_data <- read.csv("../data/geo_data.csv")
+
+# Merge geo_data with zip_distribution based on the zip_code
+zip_distribution_with_city <- zip_distribution %>%
+  left_join(geo_data, by = c("zip_code" = "zipcode"))
+
+# Plot the distribution of providers by zip code, showing city names inside bars
+ggplot(zip_distribution_with_city[1:20,], aes(x = reorder(zip_code, provider_count), y = provider_count)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() + 
+  theme_minimal() +
+  labs(
+    title = "Top 20 Provider Distribution by Zip Code",
+    x = "Zip Code",
+    y = "Number of Providers"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  # Add city name labels inside the bars
+  geom_text(aes(label = city), hjust = 1.5, color = "black", size = 3)
+```
+
+The provided data shows the number of healthcare providers (`provider_count`) available in different zip codes (`zip_code`). Here are key observations and interpretations:
+
+#### 1. High Provider Counts in Specific Zip Codes
+- **Zip Code 00717** (presumably located in Puerto Rico) has the highest number of healthcare providers with **89** providers, suggesting a higher concentration of healthcare services in this area.
+- **Zip Code 92103** (San Diego, CA) follows closely with **54** providers, indicating a well-developed healthcare infrastructure in this region.
+
+#### 2. Consistent Provider Distribution
+- **Zip Codes 93291**, **91767**, and **11235** each have a relatively high provider count (around **47-53**). These are likely populated or urban areas with better healthcare access.
+
+#### 3. Potential Focus on Specific Urban or Residential Areas
+- Zip codes like **00917** (San Juan, PR) and **93940** (Monterey, CA) also show strong provider counts (**44 and 43**, respectively), which might indicate areas of higher population density or healthcare demand.
+- **Zip Code 60639** (Chicago, IL) with **41** providers likely reflects the demand for healthcare services in a major urban center.
+
+#### 4. Lower Provider Counts in Specific Areas
+- **Zip Code 90716** (Compton, CA) with **40** providers and **10003** (New York, NY) with **39** providers still have relatively high counts, though their position at the lower end of the list might indicate the presence of fewer providers in comparison to other areas.
+
+#### 5. Regional Variations
+- The distribution of provider counts across zip codes is not uniform. Higher counts appear to be in urban or highly populated areas, with fewer providers available in more rural or less populated regions. This suggests that healthcare availability may be more concentrated in metropolitan areas.
+
+Some zip codes, particularly those in **neighboring U.S. territories** or smaller regions, may not display city names on the chart.
+
+### 5.2 Geospatial Analysis
+
+```{r shapefile-push, include = FALSE}
+# Load US states shapefile using 'tigris'
+us_states <- st_as_sf(states())
+
+# Transform the projection to WGS84 (Leaflet standard)
+us_states <- st_transform(us_states, crs = 4326)
+
+# Merge state shapefile with the provider distribution data
+state_map_data <- us_states %>%
+  left_join(state_distribution, by = c("STUSPS" = "state_cd.before"))
+```
+
+
+```{r state-providers-map}
+# Create an interactive map using Leaflet
+leaflet(state_map_data) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Base map tiles
+  addPolygons(
+    fillColor = ~ifelse(is.na(provider_count), "gray", "lightblue"),  # Generic color (lightblue or gray if NA)
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    popup = ~paste("<strong>State:</strong>", STUSPS, "<br><strong>Provider Count:</strong>", provider_count),
+    highlight = highlightOptions(
+      weight = 3,
+      color = "#666",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    )
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    colors = c("lightblue", "gray"),  # Basic color choices
+    labels = c("Providers", "No Data"),
+    title = "Provider Count"
+  )
+```
+
+#### Key Observations from the Map
+The map clearly shows that **North Dakota** is highlighted in grey, indicating that there are no providers in the state. This visualization helps identify areas that are underrepresented in terms of provider distribution.
+
+#### Exploration of Providers by State
+
+We can further explore the data by analyzing the number of providers in each state. This will help us identify which states have the most and least healthcare providers. The analysis can be expanded by looking into provider counts for individual zip codes within each state, which may offer more granular insights.
+
+```{r choropleth-map}
+# Create a color palette for provider count
+pal <- colorNumeric(palette = "YlGnBu", domain = state_map_data$provider_count)
+
+# Create an interactive choropleth map using Leaflet
+leaflet(state_map_data) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Base map tiles
+  addPolygons(
+    fillColor = ~pal(provider_count),  # Use the color palette based on provider count
+    color = "black",
+    weight = 1,
+    opacity = 1,
+    fillOpacity = 0.7,
+    popup = ~paste("<strong>State:</strong>", STUSPS, "<br><strong>Provider Count:</strong>", provider_count),
+    highlight = highlightOptions(
+      weight = 3,
+      color = "#666",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    )
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = pal,  # Use the same color palette
+    values = state_map_data$provider_count,
+    title = "Provider Count",
+    opacity = 1
+  )
+```
+
+Here’s a breakdown of the states and their respective provider counts:
+
+- **California** (CA) has the highest provider count with multiple zip codes showing large numbers of providers (e.g., zip codes 00717, 92103, 93291).
+- **Texas**, **Florida**, and **New York** also show high provider counts, reflecting the density of healthcare services in these states.
+- **North Dakota**, as highlighted earlier, has no providers, which indicates a possible gap in healthcare accessibility that could be worth investigating.
+
+
+### 5.3 Reassignment by providers
+
+```{r reassign-providers}
+# Count the number of reassignments by each provider
+reassignment_counts <- df %>%
+  group_by(enrlmt_id, provider_type_desc.before, state_cd.before) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+# Display the table interactively using DT
+datatable(reassignment_counts, caption = "Number of Reassignments per Provider")
+```
+
+#### **Top Providers by Number of Reassignments**
+
+The table below identifies the top providers with the most reassignments:
+
+- The provider `I20051024000964` in **Illinois** has the highest number of reassignments (152). 
+- The **General Practice** specialty seems to have the most reassignments across states, particularly in **Illinois** and **Ohio**.
+
+#### **California's Provider Distribution**
+When filtering for **California** in the data, several specialties emerge with a high number of reassignments. Some of the top providers in California include:
+
+- **Psychiatry** (92 reassignments), **Hospitalist** (70 reassignments), and **Anesthesiology** (60 reassignments) are among the specialties with the most reassignments in **California**. 
+- This suggests a higher demand for healthcare providers in these fields, likely driven by the state’s large population and diverse healthcare needs.
+
+#### **Specialties with High Reassignments**
+Several specialties appear frequently in the top reassignments list, especially:
+- **Psychiatry**
+- **Anesthesiology**
+- **General Practice**
+
+These fields seem to experience a higher frequency of reassignments, potentially due to factors such as provider shortages, burnout, or systemic challenges in the healthcare system.
+
+### 5.4 Reassignment providers and receivers relationship
+
+##### Sankey diagram depicting flow of reassignments between providers
+
+```{r sankey}
+# Create a dataset showing unique pairs of reassigning and receiving providers
+provider_relationships <- df %>%
+  select(enrlmt_id, rcv_bnft_enrlmt_id, provider_type_desc.before, provider_type_desc.after) %>%
+  distinct()
+
+# Prepare data for Sankey diagram by counting reassignments
+sankey_data <- provider_relationships %>%
+  count(enrlmt_id, rcv_bnft_enrlmt_id) %>%
+  rename(from = enrlmt_id, to = rcv_bnft_enrlmt_id, value = n)
+
+# Select the top 20 relationships based on the count of reassignments (value)
+top_sankey_data <- sankey_data %>%
+  arrange(desc(value)) %>%
+  head(20)
+
+# Create Nodes data frame (unique provider IDs)
+nodes <- data.frame(name = unique(c(top_sankey_data$from, top_sankey_data$to)))
+
+# Create a mapping from provider IDs to node indices
+top_sankey_data$from_id <- match(top_sankey_data$from, nodes$name) - 1
+top_sankey_data$to_id <- match(top_sankey_data$to, nodes$name) - 1
+
+# Create the Sankey diagram
+sankey_plot <- sankeyNetwork(Links = top_sankey_data, 
+                             Source = "from_id", 
+                             Target = "to_id", 
+                             Value = "value", 
+                             NodeID = "name", 
+                             units = "Reassignments", 
+                             Nodes = nodes)
+
+# Plot the Sankey diagram
+sankey_plot
+```
+
+
+```{r receiving-reassign}
+# Count the number of receiving reassignments (after reassignment) by each provider
+receiving_reassignment_counts <- df %>%
+  group_by(rcv_bnft_enrlmt_id, provider_type_desc.after, state_cd.after) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+# Display the table interactively using DT
+datatable(receiving_reassignment_counts, caption = "Number of Receiving Reassignments per Provider")
+
+```
+
+#### Top Providers with Most Reassignments:
+
+- The provider `O20240201001450` in **Ohio** (specialty: Dermatology) leads the list with **122 reassignments**.
+- Other providers in **New York (NY)** and **California (CA)** also show high numbers of receiving reassignments, particularly in specialties like **Interventional Pain Management**, **Internal Medicine**, and **Addiction Medicine**.
+
+#### Specialties with Frequent Reassignments:
+
+- **Addiction Medicine** and **Geriatric Medicine** in **California** appear frequently with **23 reassignments** each.
+- **Physical Medicine and Rehabilitation** is another common specialty in **Illinois**, with multiple providers having **19 reassignments**.
+
+#### Geographical Distribution:
+
+- **California** and **Illinois** have numerous providers with significant numbers of receiving reassignments, suggesting these states have higher provider turnover or redistribution.
+- **Ohio** and **New York** also emerge as key states, with providers in **Dermatology**, **Interventional Pain Management**, and **Internal Medicine** showing notable reassignment counts.
+
+
+## Conclusion
+
+The data highlights significant disparities in the distribution of healthcare providers across the U.S., with urbanized states such as **California**, **Illinois**, and **Ohio** having a higher number of providers and frequent reassignments. These states are likely home to larger healthcare systems with dynamic provider turnover, suggesting an active healthcare environment. Conversely, states like **North Dakota**, with no data on providers, may indicate either missing data or gaps in healthcare coverage that warrant further investigation.
+
+The analysis also reveals that **California** and **Illinois** exhibit frequent reassignments in specialties such as **Dermatology**, **Pain Management**, and **Physical Medicine**, which could suggest a higher volume of healthcare activity or challenges such as provider shortages or network realignments. Smaller or rural states, where provider numbers are lower, may be underserved, and this could have implications for healthcare access, availability, and quality.
+
+In summary, the data underscores the need for policy interventions to address provider distribution imbalances. This includes focusing on areas with fewer providers and higher reassignment frequencies, potentially through targeted resource allocation, improved retention strategies, and support for underserved regions. Additionally, understanding the trends in specialized care can help inform healthcare planning and ensure that all regions have adequate access to necessary medical services.
+
+## References
+
+1. https://github.com/scpike/us-state-county-zip/blob/master/geo-data.csv
+2. https://r-graph-gallery.com/sankey-diagram.html
+3. https://r-graph-gallery.com/327-chloropleth-map-from-geojson-with-ggplot2.html
+4. https://bookdown.org/yihui/rmarkdown/xaringan.html

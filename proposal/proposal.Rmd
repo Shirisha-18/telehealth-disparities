@@ -1,0 +1,121 @@
+---
+title: "Geographic Disparities in Access to Telemedicine Services"
+subtitle: "Data-Driven Analysis Using Medicare Fee-For-Service Provider Data"
+author: "Shirisha Biyyala"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+
+```{r load-libraries, message=FALSE, warning=FALSE}
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(skimr)
+```
+
+### Project Overview
+
+#### Introduction and Background
+The COVID-19 pandemic prompted an unprecedented surge in telemedicine usage, transforming healthcare delivery across the United States. However, access to telemedicine services has not been uniform across all regions, creating potential disparities. This project aims to examine these disparities using the Medicare Fee-For-Service Public Provider Enrollment data, which contains detailed information on Medicare-enrolled providers, their practice locations, and the reassignment of benefits. The goal is to identify geographic patterns in access to telemedicine services and highlight regions that may have been underserved during the pandemic.
+
+### Problem Statement
+
+#### Define the Problem
+Access to telemedicine services varies significantly across geographic areas, leading to disparities that affect healthcare delivery and outcomes. Factors contributing to these disparities may include the distribution of telemedicine-capable providers, demographic characteristics of the population, and provider enrollment characteristics. Understanding these factors is crucial for addressing inequities in healthcare access.
+
+#### Project Objectives
+
+- **Analyze Provider Distribution**: Examine the distribution of telemedicine-capable providers across different geographic regions (e.g., states, cities, zip codes).
+- **Identify Disparities**: Investigate disparities in access to telemedicine services based on geographic, demographic, and provider-level variables.
+- **Explore Provider Enrollment Characteristics**: Assess how provider type, specialty, and reassignment of benefits impact access to telemedicine.
+- **Provide Policy Recommendations**: Offer actionable recommendations for healthcare policy that can improve telemedicine access in underserved areas.
+
+
+### Data Source
+
+This project will utilize several datasets to analyze geographic disparities in access to telemedicine services. Each dataset provides critical information necessary for understanding the landscape of telemedicine providers and their service availability.
+
+- **Source**: Provider Enrollment, Chain, and Ownership System (PECOS).
+- **Link**: [Medicare Fee-For-Service Public Provider Enrollment Data](https://www.nber.org/research/data/medicare-fee-service-public-provider-enrollment-data)
+
+```{r data-info}
+# Load data
+enrollment <- read_csv("../data/PPEF_Enrollment_Extract_2024.10.07.csv", show_col_types = FALSE)
+location <- read_csv("../data/PPEF_Practice_Location_Extract_2024.10.07.csv", show_col_types = FALSE)
+reassignment <- read_csv("../data/PPEF_Reassignment_Extract_2024.10.07.csv", show_col_types = FALSE)
+secondary <- read_csv("../data/PPEF_Secondary_Specialty_Extract_2024.10.07.csv", show_col_types = FALSE)
+```
+
+#### Enrollment Data
+**Description**: Contains comprehensive details about healthcare practitioners enrolled in Medicare, including identification, names, and provider types.
+
+**File**: `/data/PPEF_Enrollment_Extract_2024.10.07.csv`
+
+```{r data-enrollment}
+glimpse(enrollment)
+skim(enrollment)
+```
+
+#### Practice Location Data
+**Description**: Includes information about the locations where practitioners operate, detailing the specific city, state, and ZIP code of each practice.
+
+**File**: `/data/PPEF_Practice_Location_Extract_2024.10.07.csv`
+
+```{r data-location}
+glimpse(location)
+skim(location)
+```
+
+#### Reassignment Data
+**Description**: Provides details regarding the reassignment of benefits for certain healthcare practitioners, highlighting their relationships with other providers or entities.
+
+**File**: `/data/PPEF_Reassignment_Extract_2024.10.07.csv`
+
+```{r data-reassignment}
+glimpse(reassignment)
+skim(reassignment)
+```
+
+#### Secondary Specialty Data
+**Description**: Lists additional specialties that practitioners may possess, expanding the understanding of the services they can provide.
+
+**File**: `/data/PPEF_Secondary_Specialty_Extract_2024.10.07.csv`
+
+```{r data-secondary}
+glimpse(secondary)
+skim(secondary)
+```
+
+
+### Methodology
+
+#### Data Preprocessing
+
+- **Data Cleaning**: Conduct thorough cleaning of the dataset to eliminate inconsistencies or missing values, particularly in geographic identifiers (state, city, ZIP code).
+- **Data Linking**: Link relevant fields such as Enrollment IDs, Provider Type Codes, and Practice Location information to create a cohesive dataset for analysis.
+
+#### Exploratory Data Analysis (EDA)
+
+- **Provider Distribution Analysis**: Analyze the number of telemedicine-capable providers across different geographic levels (state, city, ZIP code).
+- **Providing Service Analysis**: Flag providers based on the presence of associated location and benefit reassignment data to categorize them into those providing telemedicine services and those not providing such services.
+
+#### Geospatial Analysis
+
+- **Mapping Provider Distribution**: Utilize GIS tools or mapping software (e.g., R libraries like `leaflet`, `arcgisbinding`, and `arcgisgeocoder`) to visually represent the distribution of telemedicine-capable providers.
+- **Hotspot Analysis**: Identify geographic regions with high or low access to telemedicine services based on provider density.
+
+#### Statistical Analysis
+
+- **Regression Models**: Analyze relationships between provider characteristics (e.g., provider type, reassignment of benefits) and geographic disparities in access to telemedicine services.
+- **Cluster Analysis**: Group regions based on similarities in provider availability to identify underserved areas.
+
+### Anticipated Outcomes
+
+- A detailed report highlighting geographic disparities in access to telemedicine services across the United States.
+- Identification of specific regions and populations that face challenges in accessing telemedicine.
+- Recommendations for policy interventions aimed at improving telemedicine access, ultimately contributing to enhanced healthcare equity.
